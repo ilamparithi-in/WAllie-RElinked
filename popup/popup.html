@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WAllie - RElinked</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="header-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+      </svg>
+    </div>
+    <div class="header-text">
+      <div class="title">WAllie - RElinked</div>
+      <div class="subtitle">Instant OpenGraph Previews for WhatsApp Web</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Main Feature Container -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title-row">
+          <span class="card-title">Desktop Link Previews</span>
+          <span id="status-badge" class="badge badge-active">Active</span>
+        </div>
+        <p class="card-desc">
+          Scrapes OpenGraph metadata and renders rich link cards locally on your Linux desktop without relying on peer-to-peer Signal requests to your primary phone. Eliminates 7-second timeouts when your phone is unreachable, offline, or being repaired.
+        </p>
+      </div>
+
+      <div class="card-toggle-row">
+        <span class="toggle-label">Enable Previews</span>
+        <label class="switch">
+          <input type="checkbox" id="toggle-enabled" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- Feature Spec Badges -->
+      <div class="spec-badges">
+        <span class="spec-badge">
+          <svg class="spec-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+          Direct HTTP Fetch
+        </span>
+        <span class="spec-badge">
+          <svg class="spec-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2">
+            <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+            <rect x="9" y="9" width="6" height="6"></rect>
+            <line x1="9" y1="1" x2="9" y2="4"></line>
+            <line x1="15" y1="1" x2="15" y2="4"></line>
+            <line x1="9" y1="20" x2="9" y2="23"></line>
+            <line x1="15" y1="20" x2="15" y2="23"></line>
+          </svg>
+          Thumbnailer (&le;30KB)
+        </span>
+        <span class="spec-badge">
+          <svg class="spec-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+          Main-World Action Hook
+        </span>
+      </div>
+
+      <!-- Cache Management Row -->
+      <div class="cache-row">
+        <div>
+          <div class="cache-title">
+            <span>Preview Cache</span>
+            <span id="cache-count" class="cache-badge">0 items in memory</span>
+          </div>
+          <p class="cache-desc">Flushes cached OpenGraph models and thumbnail buffers to force fresh re-scraping.</p>
+        </div>
+        <button id="clear-cache-btn" class="btn btn-secondary">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f15c6d" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span>Clear Cache</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Security & Privacy Disclaimers Callout -->
+    <div class="callout callout-warning">
+      <div class="callout-header">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>Security & Privacy Disclaimers</span>
+      </div>
+      <ul class="callout-list">
+        <li>
+          <strong>Client IP & Network Exposure:</strong> Generating previews locally causes your desktop client to send direct HTTP/HTTPS requests to the shared URL's host server. This exposes your device's public IP address, TLS fingerprint, and headers to that website before you even send the message. Native WhatsApp normally proxies these requests through your primary phone or WhatsApp infrastructure.
+        </li>
+        <li>
+          <strong>Client-Side JavaScript Hooking:</strong> Injects an interceptor into WhatsApp Web's main-world JavaScript runtime (<code>WAWebLinkPreviewChatAction.getLinkPreview</code>) to substitute desktop OpenGraph models directly into the message composer.
+        </li>
+      </ul>
+    </div>
+
+    <!-- Architecture Context Note -->
+    <div class="callout callout-info">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2" class="callout-info-icon">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+      </svg>
+      <div>
+        <strong>Desktop Parity Note:</strong> Official WhatsApp Web runs inside a browser sandbox and cannot make cross-origin requests. WhatsApp Desktop for Windows works around this by using a native C++ Edge WebView2 bridge (<code>cr:17219.getWindowsBridge().linksPreview</code>) to scrape previews locally. This extension provides the equivalent bridge architecture on Linux.
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
