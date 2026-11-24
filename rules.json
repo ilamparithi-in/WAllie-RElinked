@@ -27,6 +27,10 @@
     "condition": {
       "urlFilter": "*",
       "resourceTypes": ["xmlhttprequest", "other"],
+      "initiatorDomains": [
+        "web.whatsapp.com",
+        "whatsapp.com"
+      ],
       "excludedRequestDomains": [
         "whatsapp.com",
         "whatsapp.net",

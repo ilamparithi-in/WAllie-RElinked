@@ -11,12 +11,18 @@ let dnrReady = false;
 
 /**
  * Configure Declarative Net Request rules to enforce Discordbot User-Agent and strip
- * Client Hints (sec-ch-ua) for requests originating from this extension's service worker.
- * Excludes WhatsApp and Meta domains to safeguard WhatsApp Web's own session integrity.
+ * Client Hints (sec-ch-ua) specifically for requests originating from this extension's
+ * background worker or WhatsApp Web.
+ * Excludes WhatsApp and Meta domains to safeguard WhatsApp Web's own session integrity,
+ * and restricts initiatorDomains to prevent altering User-Agents across other browser tabs.
  */
 async function setupCrawlerUserAgentRule() {
   if (typeof chrome === 'undefined' || !chrome.declarativeNetRequest) return;
   try {
+    const initiatorDomains = ['web.whatsapp.com', 'whatsapp.com'];
+    if (chrome.runtime?.id) {
+      initiatorDomains.push(chrome.runtime.id);
+    }
     await chrome.declarativeNetRequest.updateDynamicRules({
       removeRuleIds: [DNR_RULE_ID],
       addRules: [
@@ -48,6 +54,7 @@ async function setupCrawlerUserAgentRule() {
           condition: {
             urlFilter: '*',
             resourceTypes: ['xmlhttprequest', 'other'],
+            initiatorDomains,
             excludedRequestDomains: [
               'whatsapp.com',
               'whatsapp.net',

@@ -4,3 +4,5 @@ dist/
 *.crx
 .DS_Store
 *.log
+_metadata/
+
