@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "description": "Instant OpenGraph link previews for WhatsApp Web without phone timeouts. Reverse-engineered client-side preview scraper.",
   "permissions": [
-    "storage"
+    "storage",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -17,6 +19,15 @@
   },
   "background": {
     "service_worker": "scripts/background.js"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "crawler_rules",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
   },
   "content_scripts": [
     {

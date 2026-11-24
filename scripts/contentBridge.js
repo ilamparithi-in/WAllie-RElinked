@@ -23,6 +23,14 @@ if (document.readyState === 'loading') {
 
 window.addEventListener('message', (event) => {
   if (!event.data || typeof event.data !== 'object') return;
+  if (event.data.type === 'WA_LP_CLEAR_CACHE') {
+    try {
+      chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' }, (res) => {
+        window.postMessage({ type: 'WA_LP_CLEAR_CACHE_RES', success: res?.success }, '*');
+      });
+    } catch {}
+    return;
+  }
   if (event.data.type === 'WA_LP_REQ') {
     const { requestId, url } = event.data;
     try {

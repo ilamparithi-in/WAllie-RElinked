@@ -6,6 +6,69 @@
 const PREVIEW_CACHE = new Map();
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const CRAWLER_USER_AGENT = 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)';
+const DNR_RULE_ID = 1001;
+let dnrReady = false;
+
+/**
+ * Configure Declarative Net Request rules to enforce Discordbot User-Agent and strip
+ * Client Hints (sec-ch-ua) for requests originating from this extension's service worker.
+ * Excludes WhatsApp and Meta domains to safeguard WhatsApp Web's own session integrity.
+ */
+async function setupCrawlerUserAgentRule() {
+  if (typeof chrome === 'undefined' || !chrome.declarativeNetRequest) return;
+  try {
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: [DNR_RULE_ID],
+      addRules: [
+        {
+          id: DNR_RULE_ID,
+          priority: 1,
+          action: {
+            type: 'modifyHeaders',
+            requestHeaders: [
+              {
+                header: 'User-Agent',
+                operation: 'set',
+                value: CRAWLER_USER_AGENT
+              },
+              {
+                header: 'sec-ch-ua',
+                operation: 'remove'
+              },
+              {
+                header: 'sec-ch-ua-mobile',
+                operation: 'remove'
+              },
+              {
+                header: 'sec-ch-ua-platform',
+                operation: 'remove'
+              }
+            ]
+          },
+          condition: {
+            urlFilter: '*',
+            resourceTypes: ['xmlhttprequest', 'other'],
+            excludedRequestDomains: [
+              'whatsapp.com',
+              'whatsapp.net',
+              'facebook.com',
+              'fbcdn.net',
+              'meta.com'
+            ]
+          }
+        }
+      ]
+    });
+    dnrReady = true;
+  } catch (err) {
+    console.warn('[link-previews] Failed to register declarativeNetRequest rule:', err);
+  }
+}
+
+setupCrawlerUserAgentRule();
+if (typeof chrome !== 'undefined' && chrome.runtime?.onInstalled) {
+  chrome.runtime.onInstalled.addListener(setupCrawlerUserAgentRule);
+}
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -13,38 +76,57 @@ function escapeRegex(str) {
 
 function decodeHtmlEntities(str) {
   if (!str) return '';
-  return str
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#039;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ');
+  let res = str;
+  for (let pass = 0; pass < 2; pass++) {
+    const prev = res;
+    res = res
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#039;/g, "'")
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+        try {
+          return String.fromCodePoint(parseInt(hex, 16));
+        } catch {
+          return '';
+        }
+      })
+      .replace(/&#(\d+);/g, (_, dec) => {
+        try {
+          return String.fromCodePoint(parseInt(dec, 10));
+        } catch {
+          return '';
+        }
+      });
+    if (res === prev) break;
+  }
+  return res;
 }
 
-function extractMetaContent(html, propertyName, isName = false) {
-  const attr = isName ? 'name' : 'property';
+function extractMetaContent(html, propertyName) {
   const escapedProp = escapeRegex(propertyName);
 
   const r1 = new RegExp(
-    `<meta\\s+[^>]*?\\b${attr}\\s*=\\s*(?:["']${escapedProp}["']|${escapedProp}(?=[\\s>]))[^>]*?\\bcontent\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
+    `<meta\\s+[^>]*?\\b(?:property|name)\\s*=\\s*(?:["']${escapedProp}["']|${escapedProp}(?=[\\s>]))[^>]*?\\bcontent\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
     'i'
   );
   const m1 = html.match(r1);
   if (m1) {
-    const val = m1[1] !== undefined ? m1[1] : m1[2] !== undefined ? m1[2] : m1[3];
+    const val = m1[1] !== undefined ? m1[1] : (m1[2] !== undefined ? m1[2] : m1[3]);
     if (val !== undefined && val.trim()) return decodeHtmlEntities(val.trim());
   }
 
   const r2 = new RegExp(
-    `<meta\\s+[^>]*?\\bcontent\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))[^>]*?\\b${attr}\\s*=\\s*(?:["']${escapedProp}["']|${escapedProp}(?=[\\s>]))`,
+    `<meta\\s+[^>]*?\\bcontent\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))[^>]*?\\b(?:property|name)\\s*=\\s*(?:["']${escapedProp}["']|${escapedProp}(?=[\\s>]))`,
     'i'
   );
   const m2 = html.match(r2);
   if (m2) {
-    const val = m2[1] !== undefined ? m2[1] : m2[2] !== undefined ? m2[2] : m2[3];
+    const val = m2[1] !== undefined ? m2[1] : (m2[2] !== undefined ? m2[2] : m2[3]);
     if (val !== undefined && val.trim()) return decodeHtmlEntities(val.trim());
   }
 
@@ -59,7 +141,7 @@ function extractLinkHref(html, relType) {
   );
   const m = html.match(r);
   if (m) {
-    const val = m[1] !== undefined ? m[1] : m[2] !== undefined ? m[2] : m[3];
+    const val = m[1] !== undefined ? m[1] : (m[2] !== undefined ? m[2] : m[3]);
     if (val !== undefined && val.trim()) return decodeHtmlEntities(val.trim());
   }
   return null;
@@ -135,14 +217,18 @@ async function fetchLinkPreviewInternal(targetUrl) {
     return cached.data;
   }
 
+  if (!dnrReady) {
+    await setupCrawlerUserAgentRule();
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 4000);
 
   try {
     const res = await fetch(targetUrl, {
       signal: controller.signal,
+      cache: 'no-store',
       headers: {
-        'User-Agent': CRAWLER_USER_AGENT,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9'
       }
@@ -151,19 +237,76 @@ async function fetchLinkPreviewInternal(targetUrl) {
     if (!res.ok) return null;
 
     const html = await res.text();
-    const title =
-      extractMetaContent(html, 'og:title') ||
-      extractMetaContent(html, 'twitter:title') ||
-      extractTitle(html);
-    const description =
-      extractMetaContent(html, 'og:description') ||
-      extractMetaContent(html, 'twitter:description') ||
-      extractMetaContent(html, 'description', true);
+
+    // --- Universal Title Extraction ---
+    const ogTitle = extractMetaContent(html, 'og:title');
+    const twTitle = extractMetaContent(html, 'twitter:title');
+    const docTitle = extractTitle(html);
+    const siteName =
+      extractMetaContent(html, 'og:site_name') ||
+      extractMetaContent(html, 'application-name');
+
+    let title = ogTitle || twTitle || docTitle;
+    title = (title || '').replace(/\s+/g, ' ').trim();
+
+    // If og:title or twitter:title is just the site name itself, prefer document title if it contains richer info
+    if (
+      siteName &&
+      title &&
+      docTitle &&
+      title.toLowerCase() === siteName.toLowerCase() &&
+      docTitle.toLowerCase() !== siteName.toLowerCase()
+    ) {
+      title = (docTitle || '').replace(/\s+/g, ' ').trim();
+    }
+
+    // Clean Reddit boilerplate prefixes & suffixes
+    title = title.replace(/^From the\s+.*?\s+on\s+Reddit:\s*/i, '').trim();
+    title = title.replace(/\s*[\-|\•\:]\s*Reddit$/i, '').trim();
+
+    if (title && siteName) {
+      const escapedSite = escapeRegex(siteName);
+      // Clean prefix e.g. "From the ... on <SiteName>: Real Title"
+      title = title.replace(new RegExp(`^From the\\s+.*?\\s+on\\s+${escapedSite}:\\s*`, 'i'), '').trim();
+      // Clean suffix e.g. "Real Title - <SiteName>" or "Real Title | <SiteName>" or "Real Title: <SiteName>"
+      const cleaned = title.replace(new RegExp(`\\s*[\\|\\-\\•\\:]\\s*${escapedSite}$`, 'i'), '').trim();
+      if (cleaned) {
+        title = cleaned;
+      }
+    }
+
+    // --- Universal Description Extraction ---
+    const ogDesc = extractMetaContent(html, 'og:description');
+    const twDesc = extractMetaContent(html, 'twitter:description');
+    const metaDesc = extractMetaContent(html, 'description');
+
+    const cleanMeta = (metaDesc || '').replace(/\s+/g, ' ').trim();
+    const cleanOg = (ogDesc || '').replace(/\s+/g, ' ').trim();
+    const cleanTw = (twDesc || '').replace(/\s+/g, ' ').trim();
+
+    let description = cleanOg || cleanTw || cleanMeta;
+
+    // If og:description is boilerplate while standard description contains richer post text, prefer standard description
+    if (cleanMeta && cleanOg && (cleanOg.toLowerCase().startsWith('explore this post') || cleanMeta.length > cleanOg.length)) {
+      description = cleanMeta;
+    }
+
+    if (description) {
+      // Clean forum/social stats prefix (e.g. "10K votes, 1K comments. Actual body text...")
+      description = description.replace(/^[\d.,]+[kKmM]?\s+votes?,\s+[\d.,]+[kKmM]?\s+comments?\.\s*/i, '').trim();
+    }
+
+    if (!title && !description) return null;
+    if (title && title.toLowerCase() === 'reddit' && !description) return null;
+
+    title = (title || '').replace(/\s+/g, ' ').trim();
+    description = (description || '').replace(/\s+/g, ' ').trim();
 
     let imageUrl =
       extractMetaContent(html, 'og:image:secure_url') ||
       extractMetaContent(html, 'og:image') ||
       extractMetaContent(html, 'twitter:image') ||
+      extractMetaContent(html, 'twitter:image:src') ||
       extractLinkHref(html, 'image_src') ||
       extractLinkHref(html, 'apple-touch-icon') ||
       extractLinkHref(html, 'icon');
@@ -178,21 +321,23 @@ async function fetchLinkPreviewInternal(targetUrl) {
 
     let processedImage = null;
     if (imageUrl) {
-      try {
-        const imgController = new AbortController();
-        const imgTimeout = setTimeout(() => imgController.abort(), 4000);
-        const imgRes = await fetch(imageUrl, {
-          signal: imgController.signal,
-          headers: { 'User-Agent': CRAWLER_USER_AGENT }
-        });
-        clearTimeout(imgTimeout);
-        if (imgRes.ok) {
-          processedImage = await processImage(await imgRes.blob());
-        }
-      } catch {}
+      const MAX_MEDIA_RETRIES = 2;
+      for (let attempt = 0; attempt <= MAX_MEDIA_RETRIES; attempt++) {
+        try {
+          const imgController = new AbortController();
+          const imgTimeout = setTimeout(() => imgController.abort(), 4000);
+          const imgRes = await fetch(imageUrl, {
+            signal: imgController.signal,
+            headers: { 'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' }
+          });
+          clearTimeout(imgTimeout);
+          if (imgRes.ok) {
+            processedImage = await processImage(await imgRes.blob());
+            if (processedImage) break;
+          }
+        } catch {}
+      }
     }
-
-    if (!title && !description) return null;
 
     const data = {
       title: title || '',
@@ -204,7 +349,9 @@ async function fetchLinkPreviewInternal(targetUrl) {
       thumbnailHeight: processedImage?.height
     };
 
-    PREVIEW_CACHE.set(targetUrl, { data, timestamp: Date.now() });
+    if (!imageUrl || processedImage?.thumbnailBase64) {
+      PREVIEW_CACHE.set(targetUrl, { data, timestamp: Date.now() });
+    }
     return data;
   } catch {
     clearTimeout(timeout);
